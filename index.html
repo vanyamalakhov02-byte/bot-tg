@@ -1,14 +1,514 @@
-<script src="[https://telegram.org/js/telegram-widget.js?71]"></script>
-<script>
-// Инициализируем виджет и говорим Telegram подогнать высоту сообщения
-if (window.Telegram && window.Telegram.Widget) {
-window.Telegram.Widget.ready();
-window.Telegram.Widget.expand();
-}
-// Если нужно передать результат вычислений обратно боту (например, по кнопке "-"):
-function sendResultToBot(result) {
-if (window.Telegram && window.Telegram.Widget) {
-window.Telegram.Widget.sendData(JSON.stringify({ calculated_value: result }));
-}
-}
-</script>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Telegram Widget Calculator</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Phosphor Icons for subtle UI glyphs -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            tgDark: '#17212b',
+            tgBubble: '#242f3d',
+            tgSecondary: '#2b5278',
+            tgAccent: '#5288c1',
+            keyBg: '#232e3c',
+            keyHover: '#2c3b4d',
+            funcBg: '#2f3b4c',
+            opBg: '#3e658e',
+            opActive: '#5484b8'
+          },
+          boxShadow: {
+            'tg-soft': '0 8px 30px rgba(0, 0, 0, 0.35)',
+            'btn-press': 'inset 0 3px 6px rgba(0,0,0,0.4)'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    * {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* Key press bounce animation */
+    .calc-btn {
+      transition: transform 0.08s ease, background-color 0.15s ease, filter 0.15s ease;
+    }
+    .calc-btn:active {
+      transform: scale(0.92);
+      filter: brightness(1.2);
+    }
+
+    /* Custom scrollbar for history */
+    .custom-scroll::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body class="bg-[#0e1621] text-white min-h-screen flex items-center justify-center p-3 sm:p-6">
+
+  <!-- Main Calculator Card / Widget Container -->
+  <div class="w-full max-w-sm bg-tgDark rounded-[32px] p-5 shadow-tg-soft border border-white/5 flex flex-col relative overflow-hidden backdrop-blur-md">
+    
+    <!-- Top Header Bar with Widget Status & History Toggle -->
+    <div class="flex items-center justify-between pb-2 mb-1 border-b border-white/5 text-xs text-gray-400">
+      <div class="flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="font-medium tracking-wide text-gray-300">Калькулятор • Виджет</span>
+      </div>
+      <button id="historyToggleBtn" class="flex items-center gap-1 hover:text-white px-2 py-1 rounded-lg hover:bg-white/5 transition-colors">
+        <i class="ph ph-clock-counter-clockwise text-sm"></i>
+        <span>История</span>
+      </button>
+    </div>
+
+    <!-- History Dropdown / Overlay Drawer -->
+    <div id="historyPanel" class="absolute top-12 left-0 right-0 bg-tgDark/95 backdrop-blur-md border-b border-white/10 px-5 py-4 z-20 hidden transition-all duration-300 max-h-56 overflow-y-auto custom-scroll shadow-xl">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Последние действия</span>
+        <button id="clearHistoryBtn" class="text-xs text-red-400 hover:text-red-300 transition-colors">Очистить</button>
+      </div>
+      <div id="historyList" class="space-y-1.5 text-right text-sm text-gray-300">
+        <div class="text-center text-xs text-gray-500 py-3 italic">История пуста</div>
+      </div>
+    </div>
+
+    <!-- Display Screen -->
+    <div class="flex flex-col justify-end items-end h-36 px-2 py-3 select-text">
+      <!-- Formula / Previous operand display -->
+      <div id="expressionDisplay" class="text-sm font-medium text-gray-400 tracking-wide h-6 overflow-hidden text-ellipsis whitespace-nowrap max-w-full">
+        <!-- e.g. "125 × 4" -->
+      </div>
+      <!-- Current main input display -->
+      <div id="mainDisplay" class="text-5xl font-light tracking-tight text-white mt-1 overflow-x-auto overflow-y-hidden max-w-full whitespace-nowrap text-right custom-scroll leading-none">
+        0
+      </div>
+    </div>
+
+    <!-- Keypad Grid -->
+    <div class="grid grid-cols-4 gap-2.5 mt-2">
+      <!-- Row 1 -->
+      <button data-action="clear" class="calc-btn h-14 rounded-2xl bg-funcBg hover:bg-white/15 text-[#e06c75] font-semibold text-lg flex items-center justify-center">
+        AC
+      </button>
+      <button data-action="toggle-sign" class="calc-btn h-14 rounded-2xl bg-funcBg hover:bg-white/15 text-gray-200 font-medium text-lg flex items-center justify-center">
+        ⁺∕₋
+      </button>
+      <button data-action="percent" class="calc-btn h-14 rounded-2xl bg-funcBg hover:bg-white/15 text-gray-200 font-medium text-lg flex items-center justify-center">
+        %
+      </button>
+      <button data-op="÷" class="calc-btn op-btn h-14 rounded-2xl bg-opBg hover:bg-opActive text-white font-semibold text-2xl flex items-center justify-center">
+        ÷
+      </button>
+
+      <!-- Row 2 -->
+      <button data-num="7" class="calc-btn h-14 rounded-2xl bg-keyBg hover:bg-keyHover text-white font-normal text-xl flex items-center justify-center">
+        7
+      </button>
+      <button data-num="8" class="calc-btn h-14 rounded-2xl bg-keyBg hover:bg-keyHover text-white font-normal text-xl flex items-center justify-center">
+        8
+      </button>
+      <button data-num="9" class="calc-btn h-14 rounded-2xl bg-keyBg hover:bg-keyHover text-white font-normal text-xl flex items-center justify-center">
+        9
+      </button>
+      <button data-op="×" class="calc-btn op-btn h-14 rounded-2xl bg-opBg hover:bg-opActive text-white font-semibold text-2xl flex items-center justify-center">
+        ×
+      </button>
+
+      <!-- Row 3 -->
+      <button data-num="4" class="calc-btn h-14 rounded-2xl bg-keyBg hover:bg-keyHover text-white font-normal text-xl flex items-center justify-center">
+        4
+      </button>
+      <button data-num="5" class="calc-btn h-14 rounded-2xl bg-keyBg hover:bg-keyHover text-white font-normal text-xl flex items-center justify-center">
+        5
+      </button>
+      <button data-num="6" class="calc-btn h-14 rounded-2xl bg-keyBg hover:bg-keyHover text-white font-normal text-xl flex items-center justify-center">
+        6
+      </button>
+      <button data-op="-" class="calc-btn op-btn h-14 rounded-2xl bg-opBg hover:bg-opActive text-white font-semibold text-2xl flex items-center justify-center">
+        −
+      </button>
+
+      <!-- Row 4 -->
+      <button data-num="1" class="calc-btn h-14 rounded-2xl bg-keyBg hover:bg-keyHover text-white font-normal text-xl flex items-center justify-center">
+        1
+      </button>
+      <button data-num="2" class="calc-btn h-14 rounded-2xl bg-keyBg hover:bg-keyHover text-white font-normal text-xl flex items-center justify-center">
+        2
+      </button>
+      <button data-num="3" class="calc-btn h-14 rounded-2xl bg-keyBg hover:bg-keyHover text-white font-normal text-xl flex items-center justify-center">
+        3
+      </button>
+      <button data-op="+" class="calc-btn op-btn h-14 rounded-2xl bg-opBg hover:bg-opActive text-white font-semibold text-2xl flex items-center justify-center">
+        +
+      </button>
+
+      <!-- Row 5 -->
+      <button data-num="0" class="calc-btn col-span-2 h-14 rounded-2xl bg-keyBg hover:bg-keyHover text-white font-normal text-xl flex items-center pl-7 justify-start">
+        0
+      </button>
+      <button data-action="decimal" class="calc-btn h-14 rounded-2xl bg-keyBg hover:bg-keyHover text-white font-semibold text-xl flex items-center justify-center">
+        ,
+      </button>
+      <button data-action="calculate" class="calc-btn h-14 rounded-2xl bg-tgAccent hover:bg-[#6498d1] text-white font-semibold text-2xl flex items-center justify-center shadow-lg">
+        =
+      </button>
+    </div>
+
+    <!-- Bottom Footer Note -->
+    <div class="mt-4 text-center">
+      <span class="text-[11px] text-gray-500 tracking-wide">Поддерживает ввод с клавиатуры (Enter, Esc, 0-9)</span>
+    </div>
+  </div>
+
+  <script>
+    // --- State Management ---
+    let currentInput = "0";
+    let previousInput = null;
+    let operator = null;
+    let awaitingNewOperand = false;
+    let history = [];
+
+    // --- DOM Elements ---
+    const mainDisplay = document.getElementById("mainDisplay");
+    const expressionDisplay = document.getElementById("expressionDisplay");
+    const historyPanel = document.getElementById("historyPanel");
+    const historyList = document.getElementById("historyList");
+    const historyToggleBtn = document.getElementById("historyToggleBtn");
+    const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+    const clearBtn = document.querySelector('[data-action="clear"]');
+
+    // --- Formatting Helpers ---
+    function formatDisplayNumber(numStr) {
+      if (numStr === "Ошибка" || numStr === "NaN" || numStr === "Infinity") {
+        return "Ошибка";
+      }
+      
+      const parts = numStr.split(".");
+      let integerPart = parts[0];
+      const decimalPart = parts[1];
+
+      // Format thousands with space
+      const isNegative = integerPart.startsWith("-");
+      if (isNegative) integerPart = integerPart.slice(1);
+      
+      const formattedInt = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+      const sign = isNegative ? "-" : "";
+
+      if (decimalPart !== undefined) {
+        return `${sign}${formattedInt},${decimalPart}`;
+      }
+      return `${sign}${formattedInt}`;
+    }
+
+    function updateDisplay() {
+      mainDisplay.textContent = formatDisplayNumber(currentInput);
+
+      // Auto resize text font for long numbers
+      const len = currentInput.length;
+      if (len > 12) {
+        mainDisplay.className = "text-2xl font-light tracking-tight text-white mt-1 overflow-x-auto overflow-y-hidden max-w-full whitespace-nowrap text-right custom-scroll leading-none";
+      } else if (len > 8) {
+        mainDisplay.className = "text-3xl font-light tracking-tight text-white mt-1 overflow-x-auto overflow-y-hidden max-w-full whitespace-nowrap text-right custom-scroll leading-none";
+      } else {
+        mainDisplay.className = "text-5xl font-light tracking-tight text-white mt-1 overflow-x-auto overflow-y-hidden max-w-full whitespace-nowrap text-right custom-scroll leading-none";
+      }
+
+      // Update clear button label (AC vs C)
+      if (currentInput !== "0" || previousInput !== null) {
+        clearBtn.textContent = "C";
+      } else {
+        clearBtn.textContent = "AC";
+      }
+
+      // Update expression preview
+      if (operator && previousInput !== null) {
+        expressionDisplay.textContent = `${formatDisplayNumber(previousInput)} ${operator}`;
+      } else {
+        expressionDisplay.textContent = "";
+      }
+    }
+
+    // --- Keypad Handlers ---
+    function inputDigit(digit) {
+      if (currentInput === "Ошибка") {
+        currentInput = digit;
+        awaitingNewOperand = false;
+        updateDisplay();
+        return;
+      }
+
+      if (awaitingNewOperand) {
+        currentInput = digit;
+        awaitingNewOperand = false;
+      } else {
+        if (currentInput === "0") {
+          currentInput = digit;
+        } else {
+          // Limit max input length
+          if (currentInput.replace(/[^0-9]/g, "").length < 15) {
+            currentInput += digit;
+          }
+        }
+      }
+      updateDisplay();
+    }
+
+    function inputDecimal() {
+      if (currentInput === "Ошибка") {
+        currentInput = "0.";
+        awaitingNewOperand = false;
+        updateDisplay();
+        return;
+      }
+
+      if (awaitingNewOperand) {
+        currentInput = "0.";
+        awaitingNewOperand = false;
+        updateDisplay();
+        return;
+      }
+
+      if (!currentInput.includes(".")) {
+        currentInput += ".";
+        updateDisplay();
+      }
+    }
+
+    function toggleSign() {
+      if (currentInput === "0" || currentInput === "Ошибка") return;
+      currentInput = currentInput.startsWith("-") ? currentInput.slice(1) : "-" + currentInput;
+      updateDisplay();
+    }
+
+    function inputPercent() {
+      if (currentInput === "Ошибка") return;
+      const val = parseFloat(currentInput);
+      if (isNaN(val)) return;
+
+      if (previousInput !== null && operator) {
+        // Percentage relative to previous operand: A + B% = A + (A * B / 100)
+        const base = parseFloat(previousInput);
+        const result = (base * val) / 100;
+        currentInput = String(result);
+      } else {
+        currentInput = String(val / 100);
+      }
+      updateDisplay();
+    }
+
+    function handleOperator(nextOp) {
+      if (currentInput === "Ошибка") return;
+
+      const inputValue = currentInput;
+
+      if (operator && awaitingNewOperand) {
+        operator = nextOp;
+        updateDisplay();
+        return;
+      }
+
+      if (previousInput === null) {
+        previousInput = inputValue;
+      } else if (operator) {
+        const result = performCalculation(previousInput, inputValue, operator);
+        if (result === "Ошибка") {
+          currentInput = "Ошибка";
+          previousInput = null;
+          operator = null;
+          awaitingNewOperand = true;
+          updateDisplay();
+          return;
+        }
+        currentInput = String(result);
+        previousInput = String(result);
+      }
+
+      awaitingNewOperand = true;
+      operator = nextOp;
+      updateDisplay();
+    }
+
+    function performCalculation(first, second, op) {
+      const a = parseFloat(first);
+      const b = parseFloat(second);
+      if (isNaN(a) || isNaN(b)) return "Ошибка";
+
+      let res = 0;
+      switch (op) {
+        case "+":
+          res = a + b;
+          break;
+        case "-":
+          res = a - b;
+          break;
+        case "×":
+          res = a * b;
+          break;
+        case "÷":
+          if (b === 0) return "Ошибка";
+          res = a / b;
+          break;
+        default:
+          return b;
+      }
+
+      // Avoid float precision artifacts like 0.1 + 0.2 = 0.30000000000000004
+      return Math.round(res * 1e12) / 1e12;
+    }
+
+    function executeCalculate() {
+      if (operator === null || previousInput === null || awaitingNewOperand) {
+        return;
+      }
+
+      const result = performCalculation(previousInput, currentInput, operator);
+      
+      if (result === "Ошибка") {
+        currentInput = "Ошибка";
+        expressionDisplay.textContent = `${formatDisplayNumber(previousInput)} ${operator} ${formatDisplayNumber(currentInput)}`;
+        previousInput = null;
+        operator = null;
+        awaitingNewOperand = true;
+        updateDisplay();
+        return;
+      }
+
+      // Add to history
+      const historyItem = {
+        expression: `${formatDisplayNumber(previousInput)} ${operator} ${formatDisplayNumber(currentInput)}`,
+        result: formatDisplayNumber(String(result))
+      };
+      addHistory(historyItem);
+
+      expressionDisplay.textContent = `${formatDisplayNumber(previousInput)} ${operator} ${formatDisplayNumber(currentInput)} =`;
+      currentInput = String(result);
+      previousInput = null;
+      operator = null;
+      awaitingNewOperand = true;
+      updateDisplay();
+    }
+
+    function clearAll() {
+      if (clearBtn.textContent === "C" && currentInput !== "0") {
+        currentInput = "0";
+      } else {
+        currentInput = "0";
+        previousInput = null;
+        operator = null;
+        awaitingNewOperand = false;
+        expressionDisplay.textContent = "";
+      }
+      updateDisplay();
+    }
+
+    // --- History Drawer Logic ---
+    function addHistory(item) {
+      history.unshift(item);
+      if (history.length > 20) history.pop();
+      renderHistory();
+    }
+
+    function renderHistory() {
+      if (history.length === 0) {
+        historyList.innerHTML = '<div class="text-center text-xs text-gray-500 py-3 italic">История пуста</div>';
+        return;
+      }
+
+      historyList.innerHTML = history.map((item, idx) => `
+        <div class="p-2 rounded-lg bg-white/5 hover:bg-white/10 cursor-pointer transition-colors" onclick="loadHistoryItem(${idx})">
+          <div class="text-xs text-gray-400">${item.expression} =</div>
+          <div class="font-semibold text-white text-base">${item.result}</div>
+        </div>
+      `).join("");
+    }
+
+    window.loadHistoryItem = function(idx) {
+      const item = history[idx];
+      if (item) {
+        currentInput = item.result.replace(/\s/g, '').replace(',', '.');
+        awaitingNewOperand = true;
+        updateDisplay();
+        historyPanel.classList.add("hidden");
+      }
+    };
+
+    historyToggleBtn.addEventListener("click", () => {
+      historyPanel.classList.toggle("hidden");
+    });
+
+    clearHistoryBtn.addEventListener("click", () => {
+      history = [];
+      renderHistory();
+    });
+
+    // --- Click & Touch Event Delegation ---
+    document.querySelectorAll("[data-num]").forEach(btn => {
+      btn.addEventListener("click", () => inputDigit(btn.getAttribute("data-num")));
+    });
+
+    document.querySelectorAll("[data-op]").forEach(btn => {
+      btn.addEventListener("click", () => handleOperator(btn.getAttribute("data-op")));
+    });
+
+    document.querySelector('[data-action="decimal"]').addEventListener("click", inputDecimal);
+    document.querySelector('[data-action="toggle-sign"]').addEventListener("click", toggleSign);
+    document.querySelector('[data-action="percent"]').addEventListener("click", inputPercent);
+    document.querySelector('[data-action="calculate"]').addEventListener("click", executeCalculate);
+    document.querySelector('[data-action="clear"]').addEventListener("click", clearAll);
+
+    // --- Keyboard Support ---
+    window.addEventListener("keydown", (e) => {
+      if (e.key >= "0" && e.key <= "9") {
+        inputDigit(e.key);
+      } else if (e.key === "." || e.key === ",") {
+        inputDecimal();
+      } else if (e.key === "+") {
+        handleOperator("+");
+      } else if (e.key === "-") {
+        handleOperator("-");
+      } else if (e.key === "*") {
+        handleOperator("×");
+      } else if (e.key === "/") {
+        e.preventDefault();
+        handleOperator("÷");
+      } else if (e.key === "%") {
+        inputPercent();
+      } else if (e.key === "Enter" || e.key === "=") {
+        e.preventDefault();
+        executeCalculate();
+      } else if (e.key === "Escape") {
+        clearAll();
+      } else if (e.key === "Backspace") {
+        if (!awaitingNewOperand && currentInput.length > 0 && currentInput !== "Ошибка") {
+          currentInput = currentInput.length > 1 ? currentInput.slice(0, -1) : "0";
+          updateDisplay();
+        }
+      }
+    });
+
+    // Initial render
+    updateDisplay();
+  </script>
+</body>
+</html>
