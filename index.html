@@ -1,0 +1,14 @@
+<script src="[https://telegram.org/js/telegram-widget.js?71]"></script>
+<script>
+// Инициализируем виджет и говорим Telegram подогнать высоту сообщения
+if (window.Telegram && window.Telegram.Widget) {
+window.Telegram.Widget.ready();
+window.Telegram.Widget.expand();
+}
+// Если нужно передать результат вычислений обратно боту (например, по кнопке "-"):
+function sendResultToBot(result) {
+if (window.Telegram && window.Telegram.Widget) {
+window.Telegram.Widget.sendData(JSON.stringify({ calculated_value: result }));
+}
+}
+</script>
